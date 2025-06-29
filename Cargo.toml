@@ -14,4 +14,5 @@ getopts = "0.2"
 enquote = "1.1"
 gtk4 = "0.9.7"
 gtk4-layer-shell = "0.5.0"
+chrono = "0.4.41"
 
