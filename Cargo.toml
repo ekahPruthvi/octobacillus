@@ -1,0 +1,17 @@
+[package]
+name = "octobacillus"
+version = "0.1.0"
+edition = "2024"
+authors = ["ekahPruthvi <ekahpdp@gmail.com>"]
+description = "An gtk4 based greeter for greetd"
+license = "GPL-3.0"
+
+[dependencies]
+greetd_ipc = { version = "0.10.3", features = ["sync-codec"] }
+inish = { path = "../inish" }
+rpassword = "5.0"
+getopts = "0.2"
+enquote = "1.1"
+gtk4 = "0.9.7"
+gtk4-layer-shell = "0.5.0"
+
