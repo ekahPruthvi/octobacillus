@@ -74,9 +74,7 @@ fn fade_out_and_quit(window: &ApplicationWindow) {
         win_clone.set_opacity(eased);
 
         if t >= 1.0 {
-            glib::timeout_add_local(std::time::Duration::from_secs(3), move || {
-                std::process::exit(0);
-            });
+            std::process::exit(0);
         }
 
         gtk4::glib::ControlFlow::Continue
