@@ -1,5 +1,5 @@
 use gtk4::prelude::*;
-use gtk4::{Application, ApplicationWindow, Box as GtkBox, Orientation, Entry, prelude::EntryExt, Label, CssProvider, glib, EventControllerMotion, Picture, Overlay};
+use gtk4::{Application, ApplicationWindow, Box as GtkBox, Orientation, Entry, prelude::EntryExt, Label, CssProvider, glib, EventControllerKey, EventControllerMotion, Picture, Overlay, Button};
 use gtk4_layer_shell::{Edge, LayerShell, Layer};
 use greetd_ipc::{Request, Response, AuthMessageType, codec::SyncCodec};
 use std::{
@@ -9,8 +9,24 @@ use std::{
     rc::Rc,
     time::Instant,
 };
-use chrono::Local;
+use chrono::{Datelike, Local};
 use std::cell::RefCell;
+use std::f64::consts::PI;
+
+fn make_label_bouncy(label: &Label, amplitude: f64, speed: f64) {
+    let label_clone = label.clone();
+    let start_time = Instant::now();
+
+    label.add_tick_callback(move |_, _| {
+        let elapsed = start_time.elapsed().as_secs_f64();
+        let offset = (elapsed * speed * 2.0 * PI).sin() * amplitude;
+
+        label_clone.set_margin_top(offset.max(0.0) as i32); // Prevent negative margin
+        label_clone.set_margin_bottom((-offset).max(0.0) as i32);
+
+        glib::ControlFlow::Continue
+    });
+}
 
 fn typing_effect(label: &Label, text: &str, delay_ms: u64) {
     let label = label.clone();
@@ -58,7 +74,9 @@ fn fade_out_and_quit(window: &ApplicationWindow) {
         win_clone.set_opacity(eased);
 
         if t >= 1.0 {
-            std::process::exit(0);
+            glib::timeout_add_local(std::time::Duration::from_secs(3), move || {
+                std::process::exit(0);
+            });
         }
 
         gtk4::glib::ControlFlow::Continue
@@ -121,12 +139,12 @@ fn build_ui(app: &Application) {
         #user {
             font-family: Cantarell;
             font-size: 15px;
-            font-weight: 600;
-            color: rgba(255, 255, 255, 0.67);
+            font-weight: 900;
+            color: rgba(0, 0, 0, 0.67);
         }
 
         #boxxy {
-            background-color: rgba(0, 0, 0, 0.2);
+            background-color: rgba(0, 0, 0, 0.53);
             background: linear-gradient(
             -45deg,
             rgba(0, 240, 248, 0.17),
@@ -162,12 +180,55 @@ fn build_ui(app: &Application) {
         #password {
             all: unset;
             padding: 10px;
-            background-color: rgba(255, 255, 255, 0.16);
+            background-color: rgb(37, 37, 37);
             border-radius: 50px;
-            border: 1px solid rgba(160, 160, 160, 0.09);
+            border: 1px solid rgba(151, 151, 151, 0.53);
             color: white;
             caret-color: white;
         }
+
+        .calendar-container {
+            background-color:rgba(255, 255, 255, 0.32);
+            border-radius: 50px;
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+        .day-label {
+            all: unset;
+            background-color: transparent;
+            color: white;
+            border: none;
+            font-weight: 500;
+            border-radius: 12px;
+            padding: 2px;
+            padding-right: 10px;
+            padding-left: 10px;
+            margin-right: 15px;
+            margin-left: 15px;
+        }
+        .date-button {
+            all: unset;
+            background-color: transparent;
+            color: white;
+            border: none;
+            font-weight: 500;
+            border-radius: 12px;
+            padding: 2px;
+            padding-right: 10px;
+            padding-left: 10px;
+            margin-right: 20px;
+            margin-left: 20px;
+        }
+        .date-button.today {
+            background-color: rgba(255, 255, 255, 0.2);
+            color: black;
+            font-weight: bold;
+        }
+
+        label {
+            transition: margin 0.1s ease-in-out;
+        }
+
 
         ",  
     );
@@ -231,6 +292,41 @@ fn build_ui(app: &Application) {
     });
     boxxy.append(&time);
 
+    let container = GtkBox::new(Orientation::Vertical, 8);
+    container.add_css_class("calendar-container");
+
+    let weekdays = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+    let days_row = GtkBox::new(Orientation::Horizontal, 10);
+    for day in weekdays {
+        let label = Label::new(Some(day));
+        label.add_css_class("day-label");
+        days_row.append(&label);
+    }
+
+    let today = Local::now().date_naive();
+    let start_of_week = today - chrono::Duration::days((today.weekday().num_days_from_monday()) as i64);
+
+    let dates_row = GtkBox::new(Orientation::Horizontal, 10);
+    for i in 0..7 {
+        let date = start_of_week + chrono::Duration::days(i);
+        let day_label = Button::with_label(&format!("{}", date.day()));
+        day_label.add_css_class("date-button");
+
+        if date == today {
+            day_label.add_css_class("today");
+        }
+
+        dates_row.append(&day_label);
+    }
+
+    container.append(&days_row);
+    container.append(&dates_row);
+    container.set_hexpand(true);
+    container.set_margin_top(10);
+    container.set_halign(gtk4::Align::Center);
+
+    boxxy.append(&container);
+
     window.set_child(Some(&overlay));
     window.show();
 
@@ -247,8 +343,38 @@ fn build_ui(app: &Application) {
     workingbox.append(&pass_box);
     workingbox.append(&status);
 
-    let pass_box_weak = pass_box.downgrade();
+    let pass_box_weak_key = pass_box.downgrade();
+    let passwork_entry_outer_key = password_entry.clone();
 
+    let key_controller = EventControllerKey::new();
+    key_controller.connect_key_pressed(move |_, _, _, _| {
+        let pass_box_opt = pass_box_weak_key.upgrade();
+        let pass_box_weak_inner = pass_box_opt.clone();
+        let password_entry_clone = passwork_entry_outer_key.clone();
+
+        glib::timeout_add_local(std::time::Duration::from_millis(10), move || {
+            if let Some(pass_box) = &pass_box_weak_inner {
+                let current = pass_box.height_request();
+                if current < 30 {
+                    pass_box.set_height_request(current + 1);
+                    pass_box.set_margin_bottom(current + 2);
+                    glib::ControlFlow::Continue
+                } else {
+                    pass_box.append(&password_entry_clone);
+                    password_entry_clone.grab_focus();
+                    glib::ControlFlow::Break
+                }
+            } else {
+                glib::ControlFlow::Break
+            }
+        });
+        
+        gtk4::glib::Propagation::Stop
+    });
+
+    window.add_controller(key_controller);
+    
+    let pass_box_weak = pass_box.downgrade();
     // Add motion controller to workingbox
     let motion_controller = EventControllerMotion::new();
     workingbox.add_controller(motion_controller.clone());
@@ -277,6 +403,7 @@ fn build_ui(app: &Application) {
     });
 
     let last_user = read_username_from_file();
+    make_label_bouncy(&username_entry, 10.0, 0.7);
     if let Some(u) = &last_user {
         username_entry.set_text(&format!("welcome, {}", u));
         username_entry.set_visible(true);
