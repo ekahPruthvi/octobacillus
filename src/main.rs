@@ -1,8 +1,7 @@
 use gtk4::prelude::*;
-use gtk4::{Application, ApplicationWindow, Box as GtkBox, Orientation, Entry, Button, Label};
+use gtk4::{Application, ApplicationWindow, Box as GtkBox, Orientation, Entry, prelude::EntryExt, Label, CssProvider, glib, EventControllerMotion, Picture, Overlay};
 use gtk4_layer_shell::{Edge, LayerShell, Layer};
 use greetd_ipc::{Request, Response, AuthMessageType, codec::SyncCodec};
-use std::process::exit;
 use std::{
     env,
     fs,
@@ -10,7 +9,29 @@ use std::{
     rc::Rc,
     time::Instant,
 };
-use chrono;
+use chrono::Local;
+use std::cell::RefCell;
+
+fn typing_effect(label: &Label, text: &str, delay_ms: u64) {
+    let label = label.clone();
+    let chars: Vec<char> = text.chars().collect();
+    let index = Rc::new(RefCell::new(0));
+
+    let chars_rc = Rc::new(chars);
+
+    glib::timeout_add_local(std::time::Duration::from_millis(delay_ms), move || {
+        let i = *index.borrow();
+
+        if i < chars_rc.len() {
+            let current_text = chars_rc.iter().take(i + 1).collect::<String>();
+            label.set_text(&current_text);
+            *index.borrow_mut() += 1;
+            glib::ControlFlow::Continue
+        } else {
+            glib::ControlFlow::Break
+        }
+    });
+}
 
 fn read_username_from_file() -> Option<String> {
     let path = "/usr/share/octobacillus/user.octo";
@@ -25,23 +46,33 @@ fn read_username_from_file() -> Option<String> {
     None
 }
 
-fn slide_out_and_quit(window: &ApplicationWindow) {
+fn fade_out_and_quit(window: &ApplicationWindow) {
     let win_clone = window.clone();
     let start_time = Instant::now();
 
     window.add_tick_callback(move |_, _| {
         let elapsed = start_time.elapsed().as_millis();
-        let slide_y = (elapsed as f64 / 500.0).min(1.0); // 500ms animation
-        let translate_y = 1080.0 * slide_y;
+        let t = (elapsed as f64 / 500.0).min(1.0); // duration: 500ms
+        let eased = ease_in_out_cubic(1.0 - t); // fade from 1.0 to 0.0
 
-        win_clone.set_margin_top(translate_y as i32);
+        win_clone.set_opacity(eased);
 
-        if slide_y >= 1.0 {
-            exit(0);
+        if t >= 1.0 {
+            std::process::exit(0);
         }
+
         gtk4::glib::ControlFlow::Continue
     });
 }
+
+fn ease_in_out_cubic(t: f64) -> f64 {
+    if t < 0.5 {
+        4.0 * t * t * t
+    } else {
+        1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
+    }
+}
+
 
 fn main() {
     let app = Application::builder()
@@ -76,94 +107,249 @@ fn build_ui(app: &Application) {
         window.set_anchor(edge, anchor);
     }
 
-    let vbox = GtkBox::new(Orientation::Vertical, 10);
+    let css = CssProvider::new();
+    css.load_from_data(
+        "
+        #time {
+            font-family: Cantarell;
+            font-size: 86px;
+            letter-spacing: -2px;
+            font-weight: 900;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        #user {
+            font-family: Cantarell;
+            font-size: 15px;
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.67);
+        }
+
+        #boxxy {
+            background-color: rgba(0, 0, 0, 0.2);
+            background: linear-gradient(
+            -45deg,
+            rgba(0, 240, 248, 0.17),
+            rgba(248, 0, 182, 0.17),
+            rgba(237, 245, 3, 0.17),
+            rgba(2, 246, 193, 0.17),
+            rgba(0, 240, 248, 0.17),
+            rgba(149, 0, 248, 0.17)
+            );
+            background-size: 400% 400%;
+            animation: gradient 30s ease infinite;
+        }
+
+
+        @keyframes gradient {
+        0% {
+            background-position: 0% 50%;
+        }
+        25% {
+            background-position: 50% 100%;
+        }
+        50% {
+            background-position: 100% 50%;
+        }
+        75% {
+            background-position: 50% 0%;
+        }
+        100% {
+            background-position: 0% 50%;
+        }
+        }
+
+        #password {
+            all: unset;
+            padding: 10px;
+            background-color: rgba(255, 255, 255, 0.16);
+            border-radius: 50px;
+            border: 1px solid rgba(160, 160, 160, 0.09);
+            color: white;
+            caret-color: white;
+        }
+
+        ",  
+    );
+    
+    gtk4::style_context_add_provider_for_display(
+        &gtk4::gdk::Display::default().unwrap(),
+        &css,
+        gtk4::STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
+
+    let overlay = Overlay::new();
+    let boxxy = GtkBox::new(Orientation::Vertical, 10);
+    overlay.add_overlay(&boxxy);
+    boxxy.set_vexpand(true);
+    boxxy.set_hexpand(true);
+    boxxy.set_valign(gtk4::Align::Fill);
+    boxxy.set_widget_name("boxxy");
+
+    let gif_path = "/usr/share/octobacillus/bg.png";
+    let file = gtk4::gio::File::for_path(gif_path);
+
+    let gif = Picture::for_file(&file);
+    gif.set_widget_name("gif-bg");
+    gif.set_hexpand(true);
+    gif.set_vexpand(true);
+    gif.set_halign(gtk4::Align::Fill);
+    gif.set_valign(gtk4::Align::Fill);
+
+    overlay.set_child(Some(&gif));
+    
     let status = Label::new(None);
     let username_entry = Label::new(None);
-    let password_entry = Entry::builder().placeholder_text("Password").visibility(false).build();
-    let login_button = Button::with_label("Login");
+    username_entry.set_widget_name("user");
+    let password_entry = Entry::builder().placeholder_text("Enter Password").visibility(false).build();
+    password_entry.set_widget_name("password");
+    gtk4::prelude::EntryExt::set_alignment(&password_entry, 0.5);
+    password_entry.set_hexpand(true);
+    password_entry.set_vexpand(true);
+    password_entry.set_halign(gtk4::Align::Center);
 
-    vbox.append(&username_entry);
-    vbox.append(&password_entry);
-    vbox.append(&login_button);
-    vbox.append(&status);
-    window.set_child(Some(&vbox));
+    let time = Label::new(Some("cynageOS"));
+    time.set_widget_name("time");
+    time.set_margin_top(100);
+    let label_weak = time.downgrade();
+    let mut prev = String::from("cynageOS");
+
+    glib::timeout_add_seconds_local(1, move || {
+        if let Some(label) = label_weak.upgrade() {
+            let now = Local::now();
+            let current = now.format("%I:%M %p").to_string();
+
+            if prev != current {
+                prev = current.clone();
+                typing_effect(&label, &current, 50);
+            }
+
+            glib::ControlFlow::Continue
+        } else {
+            glib::ControlFlow::Break
+        }
+    });
+    boxxy.append(&time);
+
+    window.set_child(Some(&overlay));
     window.show();
 
-    // Autofill last user if present
+    let workingbox = GtkBox::new(Orientation::Vertical, 10);
+    workingbox.set_vexpand(true);
+    workingbox.set_valign(gtk4::Align::End);
+    workingbox.set_widget_name("workin");
+    workingbox.append(&username_entry);
+    boxxy.append(&workingbox);
+
+    let pass_box = GtkBox::new(Orientation::Vertical, 0);
+    pass_box.set_height_request(5);
+    pass_box.set_widget_name("hover-mee");
+    workingbox.append(&pass_box);
+    workingbox.append(&status);
+
+    let pass_box_weak = pass_box.downgrade();
+
+    // Add motion controller to workingbox
+    let motion_controller = EventControllerMotion::new();
+    workingbox.add_controller(motion_controller.clone());
+    let passwork_entry_outer = password_entry.clone();
+
+    motion_controller.connect_enter(move |_, _, _| {
+        let pass_box_weak_inner = pass_box_weak.clone();
+        let password_entry_clone = passwork_entry_outer.clone();
+
+        glib::timeout_add_local(std::time::Duration::from_millis(10), move || {
+            if let Some(pass_box) = pass_box_weak_inner.upgrade() {
+                let current = pass_box.height_request();
+                if current < 30 {
+                    pass_box.set_height_request(current + 1);
+                    pass_box.set_margin_bottom(current + 2);
+                    glib::ControlFlow::Continue
+                } else {
+                    pass_box.append(&password_entry_clone);
+                    password_entry_clone.grab_focus();
+                    glib::ControlFlow::Break
+                }
+            } else {
+                glib::ControlFlow::Break
+            }
+        });
+    });
+
     let last_user = read_username_from_file();
     if let Some(u) = &last_user {
-        username_entry.set_text(u);
-        username_entry.set_visible(false);
-        password_entry.grab_focus();
+        username_entry.set_text(&format!("welcome, {}", u));
+        username_entry.set_visible(true);
     }
 
     let status = Rc::new(status);
     let username_entry_rc = Rc::new(username_entry);
-    let password_entry_rc = Rc::new(password_entry);
+    let password_entry_rc = Rc::new(password_entry.clone());
     let window_rc = Rc::new(window);
 
-    login_button.connect_clicked({
+    password_entry.connect_activate(move |_entry| {
         let username_entry = username_entry_rc.clone();
         let password_entry = password_entry_rc.clone();
         let status = status.clone();
         let window = window_rc.clone();
-        move |_| {
-            let username = if let Some(user) = read_username_from_file() {
-                user
-            } else {
-                username_entry.text().to_string()
-            };
-            let password = password_entry.text().to_string();
 
-            let mut stream = match UnixStream::connect(env::var("GREETD_SOCK").unwrap()) {
-                Ok(s) => s,
-                Err(e) => {
-                    status.set_text(&format!("Connection error: {e}"));
-                    return;
+        let username = if let Some(user) = read_username_from_file() {
+            user
+        } else {
+            username_entry.text().to_string()
+        };
+        let password = password_entry.text().to_string();
+
+        let mut stream = match UnixStream::connect(env::var("GREETD_SOCK").unwrap()) {
+            Ok(s) => s,
+            Err(e) => {
+                status.set_text(&format!("Connection error: {e}"));
+                return;
+            }
+        };
+
+        let mut next_request = Request::CreateSession { username: username.clone() };
+        let mut starting = false;
+
+        loop {
+            if let Err(e) = next_request.write_to(&mut stream) {
+                status.set_text(&format!("Write error: {e}"));
+                break;
+            }
+
+            match Response::read_from(&mut stream) {
+                Ok(Response::AuthMessage { auth_message: _, auth_message_type }) => {
+                    let response = match auth_message_type {
+                        AuthMessageType::Visible => Some(username.clone()),
+                        AuthMessageType::Secret => Some(password.clone()),
+                        _ => None,
+                    };
+                    next_request = Request::PostAuthMessageResponse { response };
                 }
-            };
+                Ok(Response::Success) => {
+                    if starting {
 
-            let mut next_request = Request::CreateSession { username: username.clone() };
-            let mut starting = false;
-
-            loop {
-                if let Err(e) = next_request.write_to(&mut stream) {
-                    status.set_text(&format!("Write error: {e}"));
+                        fade_out_and_quit(&window);
+                        break;
+                    } else {
+                        starting = true;
+                        next_request = Request::StartSession {
+                            env: vec![],
+                            cmd: vec!["Hyprland".to_string()],
+                        };
+                    }
+                }
+                Ok(Response::Error { description, .. }) => {
+                    status.set_text(&format!("Login failed: {description}"));
+                    let _ = Request::CancelSession.write_to(&mut stream);
                     break;
                 }
-
-                match Response::read_from(&mut stream) {
-                    Ok(Response::AuthMessage { auth_message, auth_message_type }) => {
-                        let response = match auth_message_type {
-                            AuthMessageType::Visible => Some(username.clone()),
-                            AuthMessageType::Secret => Some(password.clone()),
-                            _ => None,
-                        };
-                        next_request = Request::PostAuthMessageResponse { response };
-                    }
-                    Ok(Response::Success) => {
-                        if starting {
-                            slide_out_and_quit(&window);
-                            break;
-                        } else {
-                            starting = true;
-                            next_request = Request::StartSession {
-                                env: vec![],
-                                cmd: vec!["Hyprland".to_string()],
-                            };
-                        }
-                    }
-                    Ok(Response::Error { description, .. }) => {
-                        status.set_text(&format!("Login failed: {description}"));
-                        let _ = Request::CancelSession.write_to(&mut stream);
-                        break;
-                    }
-                    Err(e) => {
-                        status.set_text(&format!("Response error: {e}"));
-                        break;
-                    }
+                Err(e) => {
+                    status.set_text(&format!("Response error: {e}"));
+                    break;
                 }
             }
         }
     });
+
 }
