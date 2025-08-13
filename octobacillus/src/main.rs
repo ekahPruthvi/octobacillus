@@ -227,7 +227,6 @@ fn build_ui(app: &Application) {
             transition: margin 0.1s ease-in-out;
         }
 
-
         ",  
     );
     
@@ -252,6 +251,7 @@ fn build_ui(app: &Application) {
     gif.set_widget_name("gif-bg");
     gif.set_hexpand(true);
     gif.set_vexpand(true);
+    gif.set_keep_aspect_ratio(false);
     gif.set_halign(gtk4::Align::Fill);
     gif.set_valign(gtk4::Align::Fill);
 
