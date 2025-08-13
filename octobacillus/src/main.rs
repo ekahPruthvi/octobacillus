@@ -1,4 +1,4 @@
-use gtk4::prelude::*;
+use gtk4::{prelude::*, Grid};
 use gtk4::{Application, ApplicationWindow, Box as GtkBox, Orientation, Entry, prelude::EntryExt, Label, CssProvider, glib, EventControllerKey, EventControllerMotion, Picture, Overlay, Button};
 use gtk4_layer_shell::{Edge, LayerShell, Layer};
 use greetd_ipc::{Request, Response, AuthMessageType, codec::SyncCodec};
@@ -294,17 +294,21 @@ fn build_ui(app: &Application) {
     container.add_css_class("calendar-container");
 
     let weekdays = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
-    let days_row = GtkBox::new(Orientation::Horizontal, 10);
+    let grid = Grid::new();
+    grid.set_column_spacing(10);
+    grid.set_row_spacing(10);
+    
+    let mut i = 0;
     for day in weekdays {
         let label = Label::new(Some(day));
         label.add_css_class("day-label");
-        days_row.append(&label);
+        grid.attach(&label, i, 0, 1, 1);
+        i+=1;
     }
 
     let today = Local::now().date_naive();
     let start_of_week = today - chrono::Duration::days((today.weekday().num_days_from_monday()) as i64);
 
-    let dates_row = GtkBox::new(Orientation::Horizontal, 10);
     for i in 0..7 {
         let date = start_of_week + chrono::Duration::days(i);
         let day_label = Button::with_label(&format!("{}", date.day()));
@@ -314,11 +318,12 @@ fn build_ui(app: &Application) {
             day_label.add_css_class("today");
         }
 
-        dates_row.append(&day_label);
+        // dates_row.append(&day_label);
+        grid.attach(&day_label, i.try_into().unwrap(), 1, 1, 1);
     }
 
-    container.append(&days_row);
-    container.append(&dates_row);
+    container.append(&grid);
+    // container.append(&dates_row);
     container.set_hexpand(true);
     container.set_margin_top(10);
     container.set_halign(gtk4::Align::Center);
