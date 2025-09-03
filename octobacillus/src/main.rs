@@ -128,7 +128,7 @@ fn build_ui(app: &Application) {
         "
         #time {
             font-family: Cantarell;
-            font-size: 86px;
+            font-size: 106px;
             letter-spacing: -2px;
             font-weight: 900;
             color: rgba(255, 255, 255, 0.5);
@@ -138,7 +138,7 @@ fn build_ui(app: &Application) {
             font-family: Cantarell;
             font-size: 15px;
             font-weight: 900;
-            color: rgba(0, 0, 0, 0.67);
+            color: rgba(255, 255, 255, 0.5);
         }
 
         #boxxy {
@@ -178,15 +178,15 @@ fn build_ui(app: &Application) {
         #password {
             all: unset;
             padding: 10px;
-            background-color: rgb(37, 37, 37);
+            background-color: rgba(255, 255, 255, 0.32);
             border-radius: 50px;
-            border: 1px solid rgba(151, 151, 151, 0.53);
+            border: 1px solid rgba(255, 255, 255, 0.18);
             color: white;
             caret-color: white;
         }
 
         .calendar-container {
-            background-color:rgba(255, 255, 255, 0.32);
+            background-color:rgba(255, 255, 255, 0.32);;
             border-radius: 50px;
             padding: 12px;
             border: 1px solid rgba(255, 255, 255, 0.18);
@@ -328,7 +328,7 @@ fn build_ui(app: &Application) {
     container.set_margin_top(10);
     container.set_halign(gtk4::Align::Center);
 
-    boxxy.append(&container);
+    boxxy.append(&container); // here
 
     window.set_child(Some(&overlay));
     window.show();
