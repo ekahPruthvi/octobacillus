@@ -227,6 +227,12 @@ fn build_ui(app: &Application) {
             transition: margin 0.1s ease-in-out;
         }
 
+        #status{
+            font-size: 12px;
+            font-weight: 900;
+            color: rgba(255, 83, 83, 1)
+        }
+
         ",  
     );
     
@@ -258,6 +264,8 @@ fn build_ui(app: &Application) {
     overlay.set_child(Some(&gif));
     
     let status = Label::new(None);
+    status.set_widget_name("status");
+    status.set_margin_bottom(10);
     let username_entry = Label::new(None);
     username_entry.set_widget_name("user");
     let password_entry = Entry::builder().placeholder_text("Enter Password").visibility(false).build();
@@ -470,7 +478,7 @@ fn build_ui(app: &Application) {
                     }
                 }
                 Ok(Response::Error { description, .. }) => {
-                    status.set_text(&format!("Login failed: {description}"));
+                    status.set_text(&format!("Login Error"));
                     let _ = Request::CancelSession.write_to(&mut stream);
                     break;
                 }
