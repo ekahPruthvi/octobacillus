@@ -1,6 +1,6 @@
 use gtk4::{prelude::*, Grid};
 use gtk4::{Application, ApplicationWindow, Box as GtkBox, Orientation, Entry, prelude::EntryExt, Label, CssProvider, glib, EventControllerKey, EventControllerMotion, Picture, Overlay, Button};
-use gtk4_layer_shell::{Edge, LayerShell, Layer};
+use gtk4_layer_shell::{Edge, LayerShell};
 use greetd_ipc::{Request, Response, AuthMessageType, codec::SyncCodec};
 use std::{
     env,
@@ -107,8 +107,8 @@ fn build_ui(app: &Application) {
         .default_height(1080)
         .build();
 
-    window.init_layer_shell();
-    window.set_layer(Layer::Bottom);
+    // window.init_layer_shell();
+    // window.set_layer(Layer::Overlay);
     window.auto_exclusive_zone_enable();
     window.fullscreen();
     window.set_decorated(false);
