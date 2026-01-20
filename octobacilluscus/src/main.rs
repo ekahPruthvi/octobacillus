@@ -107,7 +107,7 @@ fn build_ui(app: &Application) {
         }
 
         #boxxy {
-            background-color: rgba(0, 0, 0, 0.51);
+            background-color: rgba(0, 0, 0, 0.92);
         }
 
         label {

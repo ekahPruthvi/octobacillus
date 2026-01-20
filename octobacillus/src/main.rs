@@ -186,10 +186,10 @@ fn build_ui(app: &Application) {
         }
 
         .calendar-container {
-            background-color:rgba(255, 255, 255, 0.32);;
+            background-color:rgba(255, 255, 255, 0);;
             border-radius: 50px;
             padding: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.18);
+            border: 1px solid rgba(255, 255, 255, 0);
         }
         .day-label {
             all: unset;
@@ -473,7 +473,7 @@ fn build_ui(app: &Application) {
                         starting = true;
                         next_request = Request::StartSession {
                             env: vec![],
-                            cmd: vec!["Hyprland".to_string()],
+                            cmd: vec!["niri-session".to_string()],
                         };
                     }
                 }
