@@ -473,7 +473,7 @@ fn build_ui(app: &Application) {
                         starting = true;
                         next_request = Request::StartSession {
                             env: vec![],
-                            cmd: vec!["niri-session".to_string()],
+                            cmd: vec!["niri-session -c /var/lib/cynager/niri/config.kdl".to_string()],
                         };
                     }
                 }
