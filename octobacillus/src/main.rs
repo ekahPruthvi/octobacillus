@@ -466,14 +466,13 @@ fn build_ui(app: &Application) {
                 }
                 Ok(Response::Success) => {
                     if starting {
-
                         fade_out_and_quit(&window);
                         break;
                     } else {
                         starting = true;
                         next_request = Request::StartSession {
                             env: vec![],
-                            cmd: vec!["niri-session".to_string()],
+                            cmd: vec!["bash niri-session".to_string()],
                         };
                     }
                 }
