@@ -142,40 +142,14 @@ fn build_ui(app: &Application) {
         }
 
         #boxxy {
-            background-color: rgba(0, 0, 0, 0.53);
-            background: linear-gradient(
-            -45deg,
-            rgba(0, 240, 248, 0.17),
-            rgba(248, 0, 182, 0.17),
-            rgba(237, 245, 3, 0.17),
-            rgba(2, 246, 193, 0.17),
-            rgba(0, 240, 248, 0.17),
-            rgba(149, 0, 248, 0.17)
-            );
-            background-size: 400% 400%;
-            animation: gradient 30s ease infinite;
+            --color: #72727211;
+  background-color: #f3f3f300;
+  background-image: linear-gradient(0deg, transparent 24%, var(--color) 25%, var(--color) 26%, transparent 27%,transparent 74%, var(--color) 75%, var(--color) 76%, transparent 77%,transparent),
+      linear-gradient(90deg, transparent 24%, var(--color) 25%, var(--color) 26%, transparent 27%,transparent 74%, var(--color) 75%, var(--color) 76%, transparent 77%,transparent);
+  background-size: 55px 55px;
         }
 
-
-        @keyframes gradient {
-        0% {
-            background-position: 0% 50%;
-        }
-        25% {
-            background-position: 50% 100%;
-        }
-        50% {
-            background-position: 100% 50%;
-        }
-        75% {
-            background-position: 50% 0%;
-        }
-        100% {
-            background-position: 0% 50%;
-        }
-        }
-
-        #password {
+        .password {
             all: unset;
             padding: 10px;
             background-color: rgba(255, 255, 255, 0.32);
@@ -185,8 +159,20 @@ fn build_ui(app: &Application) {
             caret-color: white;
         }
 
+        .shake-error {
+            animation: shake 0.4s ease-in-out;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-10px); }
+            40% { transform: translateX(10px); }
+            60% { transform: translateX(-10px); }
+            80% { transform: translateX(10px); }
+        }
+
         .calendar-container {
-            background-color:rgba(255, 255, 255, 0);;
+            background-color:rgba(255, 255, 255, 0);
             border-radius: 50px;
             padding: 12px;
             border: 1px solid rgba(255, 255, 255, 0);
@@ -230,7 +216,26 @@ fn build_ui(app: &Application) {
         #status{
             font-size: 12px;
             font-weight: 900;
-            color: rgba(255, 83, 83, 1)
+            color: rgba(255, 83, 83, 1);
+        }
+
+        #gif-bg {
+            opacity: 0;
+            animation: fadeInAnimation 2s ease-in-out 1s forwards;
+        }
+
+        @keyframes fadeInAnimation {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+
+        #main{
+            background-color: black;
         }
 
         ",  
@@ -243,6 +248,7 @@ fn build_ui(app: &Application) {
     );
 
     let overlay = Overlay::new();
+    overlay.set_widget_name("main");
     let boxxy = GtkBox::new(Orientation::Vertical, 10);
     overlay.add_overlay(&boxxy);
     boxxy.set_vexpand(true);
@@ -260,6 +266,7 @@ fn build_ui(app: &Application) {
     gif.set_keep_aspect_ratio(false);
     gif.set_halign(gtk4::Align::Fill);
     gif.set_valign(gtk4::Align::Fill);
+    
 
     overlay.set_child(Some(&gif));
     
@@ -269,7 +276,7 @@ fn build_ui(app: &Application) {
     let username_entry = Label::new(None);
     username_entry.set_widget_name("user");
     let password_entry = Entry::builder().placeholder_text("Enter Password").visibility(false).build();
-    password_entry.set_widget_name("password");
+    password_entry.add_css_class("password");
     gtk4::prelude::EntryExt::set_alignment(&password_entry, 0.5);
     password_entry.set_hexpand(true);
     password_entry.set_vexpand(true);
@@ -371,7 +378,9 @@ fn build_ui(app: &Application) {
                     pass_box.set_margin_bottom(current + 2);
                     glib::ControlFlow::Continue
                 } else {
-                    pass_box.append(&password_entry_clone);
+                    if password_entry_clone.parent().is_none() {
+                        pass_box.append(&password_entry_clone);
+                    }
                     password_entry_clone.grab_focus();
                     glib::ControlFlow::Break
                 }
@@ -471,13 +480,24 @@ fn build_ui(app: &Application) {
                     } else {
                         starting = true;
                         next_request = Request::StartSession {
-                            env: vec![],
-                            cmd: vec!["bash niri-session".to_string()],
+                            env: vec![format!("NIRI_CONFIG=/var/lib/cynager/niri/config.kdl")],
+                            cmd: vec!["niri-session".to_string()],
                         };
                     }
                 }
                 Ok(Response::Error { description, .. }) => {
-                    status.set_text(&format!("Login Error"));
+                    password_entry.add_css_class("shake-error");
+                    status.set_text(&format!("Wrong Password"));
+                    password_entry.set_text("");
+                    glib::timeout_add_local(std::time::Duration::from_millis(400), {
+                        let entry_weak = password_entry.downgrade();
+                        move || {
+                            if let Some(entry) = entry_weak.upgrade() {
+                                entry.remove_css_class("shake-error");
+                            }
+                            glib::ControlFlow::Break
+                        }
+                    });
                     let _ = Request::CancelSession.write_to(&mut stream);
                     break;
                 }
