@@ -10,7 +10,7 @@ use std::{
     time::Instant,
 };
 use chrono::{Datelike, Local};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::f64::consts::PI;
 
 fn make_label_bouncy(label: &Label, amplitude: f64, speed: f64) {
@@ -433,6 +433,7 @@ fn build_ui(app: &Application) {
     let username_entry_rc = Rc::new(username_entry);
     let password_entry_rc = Rc::new(password_entry.clone());
     let window_rc = Rc::new(window);
+    let attempty = Rc::new(Cell::new(3));
 
     password_entry.connect_activate(move |_entry| {
         let username_entry = username_entry_rc.clone();
@@ -457,13 +458,13 @@ fn build_ui(app: &Application) {
 
         let mut next_request = Request::CreateSession { username: username.clone() };
         let mut starting = false;
-
+        let attempty = attempty.clone();
+        
         loop {
             if let Err(e) = next_request.write_to(&mut stream) {
                 status.set_text(&format!("Write error: {e}"));
                 break;
             }
-
             match Response::read_from(&mut stream) {
                 Ok(Response::AuthMessage { auth_message: _, auth_message_type }) => {
                     let response = match auth_message_type {
@@ -486,8 +487,12 @@ fn build_ui(app: &Application) {
                     }
                 }
                 Ok(Response::Error { description, .. }) => {
+                    let attemptyc = attempty.get();
+                    let new = attemptyc - 1;
+                    attempty.set(new);
+
                     password_entry.add_css_class("shake-error");
-                    status.set_text(&format!("Wrong Password"));
+                    status.set_text(&format!("Da Password is Wrong, attemps left: {}", new));
                     password_entry.set_text("");
                     glib::timeout_add_local(std::time::Duration::from_millis(400), {
                         let entry_weak = password_entry.downgrade();
