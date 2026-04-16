@@ -16,6 +16,8 @@ use rodio::{Decoder, OutputStream, Sink};
 use std::fs::File;
 use std::io::BufReader;
 use std::thread;
+use std::io::{self, BufRead};
+use std::path::PathBuf;
 
 fn make_label_bouncy(label: &Label, amplitude: f64, speed: f64) {
     let label_clone = label.clone();
