@@ -93,6 +93,39 @@ fn ease_in_out_cubic(t: f64) -> f64 {
     }
 }
 
+fn get_startup_sound_path(config_path: &str) -> Option<String> {
+    let file = File::open(config_path).ok()?;
+    let reader = io::BufReader::new(file);
+    let mut in_set_block = false;
+
+    for line in reader.lines().map_while(Result::ok) {
+        let trimmed = line.trim();
+
+        if trimmed == ":set" {
+            in_set_block = true;
+            continue;
+        }
+        if trimmed == ":end" {
+            in_set_block = false;
+            continue;
+        }
+
+        if in_set_block && trimmed.starts_with("startup") {
+            // Split by ':' and take the second part (the filename)
+            let parts: Vec<&str> = trimmed.split(':').collect();
+            if parts.len() >= 2 {
+                let filename = parts[1].trim();
+                
+                // Construct the absolute path
+                let mut path = PathBuf::from("/var/lib/cynager/niri/sound/startup/");
+                path.push(filename);
+                
+                return Some(path.to_string_lossy().into_owned());
+            }
+        }
+    }
+    None
+}
 
 fn main() {
     let app = Application::builder()
@@ -107,15 +140,19 @@ fn main() {
                 .expect("Could not find audio device");
             
             let sink = Sink::try_new(&stream_handle).expect("Could not create sink");
-            
-            if let Ok(file) = File::open("/var/lib/cynager/niri/sound/main.mp3") {
-                if let Ok(source) = Decoder::new(BufReader::new(file)) {
-                    sink.append(source);
-                    sink.sleep_until_end();
+
+
+            if let Some(sound_path) = get_startup_sound_path("/var/lib/cynager/info.probe") {
+                if let Ok(file) = File::open(sound_path) {
+                    if let Ok(source) = Decoder::new(BufReader::new(file)) {
+                        sink.append(source);
+                        sink.sleep_until_end();
+                    }
+                } else {
+                    eprintln!("Could not find music.mp3");
                 }
-            } else {
-                eprintln!("Could not find music.mp3");
             }
+
         });
     });
     app.run();
