@@ -12,6 +12,10 @@ use std::{
 use chrono::{Datelike, Local};
 use std::cell::{Cell, RefCell};
 use std::f64::consts::PI;
+use rodio::{Decoder, OutputStream, Sink};
+use std::fs::File;
+use std::io::BufReader;
+use std::thread;
 
 fn make_label_bouncy(label: &Label, amplitude: f64, speed: f64) {
     let label_clone = label.clone();
@@ -95,7 +99,25 @@ fn main() {
         .application_id("ekah.scu.octobacillus")
         .build();
 
-    app.connect_activate(build_ui);
+    app.connect_activate(|app| {
+        build_ui(app);
+        
+        thread::spawn(|| {
+            let (_stream, stream_handle) = OutputStream::try_default()
+                .expect("Could not find audio device");
+            
+            let sink = Sink::try_new(&stream_handle).expect("Could not create sink");
+            
+            if let Ok(file) = File::open("/var/lib/cynager/niri/sound/main.mp3") {
+                if let Ok(source) = Decoder::new(BufReader::new(file)) {
+                    sink.append(source);
+                    sink.sleep_until_end();
+                }
+            } else {
+                eprintln!("Could not find music.mp3");
+            }
+        });
+    });
     app.run();
 }
 
