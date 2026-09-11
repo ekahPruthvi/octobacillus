@@ -1,3 +1,4 @@
+use gtk4::cairo::SurfaceType::Image;
 use gtk4::{prelude::*, Grid};
 use gtk4::{Application, ApplicationWindow, Box as GtkBox, Orientation, Entry, prelude::EntryExt, Label, CssProvider, glib, EventControllerKey, EventControllerMotion, Picture, Overlay, Button};
 use gtk4_layer_shell::{Edge, LayerShell};
@@ -27,7 +28,7 @@ fn make_label_bouncy(label: &Label, amplitude: f64, speed: f64) {
         let elapsed = start_time.elapsed().as_secs_f64();
         let offset = (elapsed * speed * 2.0 * PI).sin() * amplitude;
 
-        label_clone.set_margin_top(offset.max(0.0) as i32); // Prevent negative margin
+        label_clone.set_margin_top(offset.max(0.0) as i32);
         label_clone.set_margin_bottom((-offset).max(0.0) as i32);
 
         glib::ControlFlow::Continue
@@ -69,21 +70,22 @@ fn read_username_from_file() -> Option<String> {
 }
 
 fn fade_out_and_quit(window: &ApplicationWindow) {
-    let win_clone = window.clone();
+    let windoww = window.clone();
     let start_time = Instant::now();
 
-    window.add_tick_callback(move |_, _| {
+    windoww.add_tick_callback(move |w, _| {
         let elapsed = start_time.elapsed().as_millis();
-        let t = (elapsed as f64 / 500.0).min(1.0); // duration: 500ms
-        let eased = ease_in_out_cubic(1.0 - t); // fade from 1.0 to 0.0
+        let t = (elapsed as f64 / 250.0).min(1.0);
+        let eased = ease_in_out_cubic(1.0 - t);
 
-        win_clone.set_opacity(eased);
+        w.set_opacity(eased);
 
         if t >= 1.0 {
-            std::process::exit(0);
+            w.close();
+            return glib::ControlFlow::Break;
         }
 
-        gtk4::glib::ControlFlow::Continue
+        glib::ControlFlow::Continue
     });
 }
 
@@ -93,6 +95,20 @@ fn ease_in_out_cubic(t: f64) -> f64 {
     } else {
         1.0 - (-2.0 * t + 2.0).powi(3) / 2.0
     }
+}
+
+fn uid_for_user(username: &str) -> Option<u32> {
+    let output = std::process::Command::new("id")
+        .arg("-u")
+        .arg(username)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    String::from_utf8_lossy(&output.stdout).trim().parse().ok()
 }
 
 fn get_startup_sound_path(config_path: &str) -> Option<String> {
@@ -113,12 +129,10 @@ fn get_startup_sound_path(config_path: &str) -> Option<String> {
         }
 
         if in_set_block && trimmed.starts_with("startup") {
-            // Split by ':' and take the second part (the filename)
             let parts: Vec<&str> = trimmed.split(':').collect();
             if parts.len() >= 2 {
                 let filename = parts[1].trim();
                 
-                // Construct the absolute path
                 let mut path = PathBuf::from("/var/lib/cynager/niri/sound/startup/");
                 path.push(filename);
                 
@@ -189,15 +203,15 @@ fn build_ui(app: &Application) {
         "
         #time {
             font-family: Cantarell;
-            font-size: 106px;
+            font-size: 156px;
             letter-spacing: -2px;
-            font-weight: 900;
-            color: rgba(255, 255, 255, 0.5);
+            font-weight: 600;
+            color: rgba(255, 255, 255, 0.19);
         }
 
         #user {
             font-family: Cantarell;
-            font-size: 15px;
+            font-size: 18px;
             font-weight: 900;
             color: rgba(255, 255, 255, 0.5);
         }
@@ -214,7 +228,7 @@ fn build_ui(app: &Application) {
             all: unset;
             padding: 10px;
             background-color: rgba(255, 255, 255, 0.32);
-            border-radius: 50px;
+            border-radius: 15px;
             border: 1px solid rgba(255, 255, 255, 0.18);
             color: white;
             caret-color: white;
@@ -299,6 +313,14 @@ fn build_ui(app: &Application) {
             background-color: black;
         }
 
+        .spin {
+            animation: spin 0.3s linear infinite;
+        }
+        @keyframes spin {
+            from { -gtk-icon-transform: rotate(0deg); }
+            to   { -gtk-icon-transform: rotate(360deg); }
+        }
+
         ",  
     );
     
@@ -338,14 +360,19 @@ fn build_ui(app: &Application) {
     username_entry.set_widget_name("user");
     let password_entry = Entry::builder().placeholder_text("Enter Password").visibility(false).build();
     password_entry.add_css_class("password");
-    gtk4::prelude::EntryExt::set_alignment(&password_entry, 0.5);
-    password_entry.set_hexpand(true);
-    password_entry.set_vexpand(true);
-    password_entry.set_halign(gtk4::Align::Center);
+
+    let spinner_image = gtk4::Image::from_file("/var/lib/cynager/icons/spinner.svg");
+    spinner_image.add_css_class("spin");
+    spinner_image.set_icon_size(gtk4::IconSize::Large);
+
+    let loading_spinner = GtkBox::builder()
+        .build();
+
+    loading_spinner.append(&spinner_image);
+    loading_spinner.set_visible(false);
 
     let time = Label::new(Some("cynageOS"));
     time.set_widget_name("time");
-    time.set_margin_top(100);
     let label_weak = time.downgrade();
     let mut prev = String::from("cynageOS");
 
@@ -364,7 +391,6 @@ fn build_ui(app: &Application) {
             glib::ControlFlow::Break
         }
     });
-    boxxy.append(&time);
 
     let container = GtkBox::new(Orientation::Vertical, 8);
     container.add_css_class("calendar-container");
@@ -373,6 +399,7 @@ fn build_ui(app: &Application) {
     let grid = Grid::new();
     grid.set_column_spacing(10);
     grid.set_row_spacing(10);
+    grid.set_margin_top(100);
     
     let mut i = 0;
     for day in weekdays {
@@ -404,7 +431,8 @@ fn build_ui(app: &Application) {
     container.set_margin_top(10);
     container.set_halign(gtk4::Align::Center);
 
-    boxxy.append(&container); // here
+    boxxy.append(&container);
+    boxxy.append(&time);
 
     window.set_child(Some(&overlay));
     window.show();
@@ -416,20 +444,31 @@ fn build_ui(app: &Application) {
     workingbox.append(&username_entry);
     boxxy.append(&workingbox);
 
-    let pass_box = GtkBox::new(Orientation::Vertical, 0);
+    let pass_box = GtkBox::new(Orientation::Horizontal, 10);
     pass_box.set_height_request(5);
     pass_box.set_widget_name("hover-mee");
+    pass_box.set_hexpand(true);
+    pass_box.set_vexpand(true);
+    pass_box.set_halign(gtk4::Align::Center);
     workingbox.append(&pass_box);
     workingbox.append(&status);
 
     let pass_box_weak_key = pass_box.downgrade();
     let passwork_entry_outer_key = password_entry.clone();
-
+    let loading_spinner_outer_key = loading_spinner.clone();
+    
     let key_controller = EventControllerKey::new();
-    key_controller.connect_key_pressed(move |_, _, _, _| {
+    key_controller.connect_key_pressed(move |_, keyval, _, state| {
         let pass_box_opt = pass_box_weak_key.upgrade();
         let pass_box_weak_inner = pass_box_opt.clone();
         let password_entry_clone = passwork_entry_outer_key.clone();
+        let loading_spinner_clone = loading_spinner_outer_key.clone();
+
+        let typed_char = if state.is_empty() || state == gtk4::gdk::ModifierType::SHIFT_MASK {
+            keyval.to_unicode().filter(|c| !c.is_control())
+        } else {
+            None
+        };
 
         glib::timeout_add_local(std::time::Duration::from_millis(10), move || {
             if let Some(pass_box) = &pass_box_weak_inner {
@@ -441,15 +480,22 @@ fn build_ui(app: &Application) {
                 } else {
                     if password_entry_clone.parent().is_none() {
                         pass_box.append(&password_entry_clone);
+                        pass_box.append(&loading_spinner_clone);
                     }
                     password_entry_clone.grab_focus();
+
+                    if let Some(c) = typed_char {
+                        let mut pos = password_entry_clone.text().len() as i32;
+                        password_entry_clone.insert_text(&c.to_string(), &mut pos);
+                        password_entry_clone.set_position(-1);
+                    }
+
                     glib::ControlFlow::Break
                 }
             } else {
                 glib::ControlFlow::Break
             }
         });
-        
         gtk4::glib::Propagation::Stop
     });
 
@@ -460,10 +506,12 @@ fn build_ui(app: &Application) {
     let motion_controller = EventControllerMotion::new();
     workingbox.add_controller(motion_controller.clone());
     let passwork_entry_outer = password_entry.clone();
+    let loading_spinner_outer = loading_spinner.clone();
 
     motion_controller.connect_enter(move |_, _, _| {
         let pass_box_weak_inner = pass_box_weak.clone();
         let password_entry_clone = passwork_entry_outer.clone();
+        let loading_spinner_clone = loading_spinner_outer.clone();
 
         glib::timeout_add_local(std::time::Duration::from_millis(10), move || {
             if let Some(pass_box) = pass_box_weak_inner.upgrade() {
@@ -474,6 +522,7 @@ fn build_ui(app: &Application) {
                     glib::ControlFlow::Continue
                 } else {
                     pass_box.append(&password_entry_clone);
+                    pass_box.append(&loading_spinner_clone);
                     password_entry_clone.grab_focus();
                     glib::ControlFlow::Break
                 }
@@ -520,6 +569,8 @@ fn build_ui(app: &Application) {
         let mut next_request = Request::CreateSession { username: username.clone() };
         let mut starting = false;
         let attempty = attempty.clone();
+        let uid = uid_for_user(&username).unwrap_or(0);
+        let ready_path = format!("/run/user/{}/cos-ready", uid);
         
         loop {
             if let Err(e) = next_request.write_to(&mut stream) {
@@ -537,17 +588,43 @@ fn build_ui(app: &Application) {
                 }
                 Ok(Response::Success) => {
                     if starting {
-                        fade_out_and_quit(&window);
+                        loading_spinner.set_visible(true);
+                        let ready_path = ready_path.clone();
+                        let window = window.clone();
+                        let wait_start = Instant::now();
+
+                        glib::timeout_add_local(std::time::Duration::from_millis(150), move || {
+                            if std::path::Path::new(&ready_path).exists() {
+                                fade_out_and_quit(&window);
+                                return glib::ControlFlow::Break;
+                            }
+
+                            // if wait_start.elapsed() > std::time::Duration::from_secs(30) {
+                            //     eprintln!(
+                            //         "Timed out waiting for desktop session hook at {ready_path}"
+                            //     );
+                            //     fade_out_and_quit(&window);
+                            //     return glib::ControlFlow::Break;
+                            // }
+
+                            glib::ControlFlow::Continue
+                        });
+
                         break;
-                    } else {
-                        starting = true;
-                        next_request = Request::StartSession {
-                            env: vec![format!("NIRI_CONFIG=/var/lib/cynager/niri/config.kdl")],
-                            cmd: vec!["niri-session".to_string()],
-                        };
                     }
+
+                    let _ = std::fs::remove_file(&ready_path);
+
+                    starting = true;
+
+                    next_request = Request::StartSession {
+                        env: vec![
+                            "NIRI_CONFIG=/var/lib/cynager/niri/config.kdl".to_string(),
+                        ],
+                        cmd: vec!["niri-session".to_string()],
+                    };
                 }
-                Ok(Response::Error { description, .. }) => {
+                Ok(Response::Error { .. }) => {
                     let attemptyc = attempty.get();
                     let new = attemptyc - 1;
                     attempty.set(new);
