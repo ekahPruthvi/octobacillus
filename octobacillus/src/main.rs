@@ -1,4 +1,3 @@
-use gtk4::cairo::SurfaceType::Image;
 use gtk4::{prelude::*, Grid};
 use gtk4::{Application, ApplicationWindow, Box as GtkBox, Orientation, Entry, prelude::EntryExt, Label, CssProvider, glib, EventControllerKey, EventControllerMotion, Picture, Overlay, Button};
 use gtk4_layer_shell::{Edge, LayerShell};
@@ -6,7 +5,7 @@ use greetd_ipc::{Request, Response, AuthMessageType, codec::SyncCodec};
 use std::{
     env,
     fs,
-    os::unix::net::UnixStream,
+    os::unix::net::{UnixListener, UnixStream},
     rc::Rc,
     time::Instant,
 };
@@ -321,6 +320,41 @@ fn build_ui(app: &Application) {
             to   { -gtk-icon-transform: rotate(360deg); }
         }
 
+        .byepass {
+            animation: upAndDown 0.5s forwards ease-in-out;
+        }
+
+        @keyframes upAndDown {
+            0% {
+                transform: translate(0px, 0px);
+                opacity: 1;
+            }
+            20% {
+                transform: translate(0px, -10px);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(0px, 100px);
+                opacity: 0;
+            }
+        }
+
+        .byetime {
+            animation: timego 1s ease-in-out forwards;
+        }
+
+        @keyframes timego {
+            from {
+                font-size: 156px;
+                font-weight: 600;
+                transform: translateY(0)
+            }
+            to {
+                font-size: 50px;
+                font-weight: 300;
+                transform: translateY(20px)
+            }
+        }
         ",  
     );
     
@@ -363,9 +397,17 @@ fn build_ui(app: &Application) {
 
     let spinner_image = gtk4::Image::from_file("/var/lib/cynager/icons/spinner.svg");
     spinner_image.add_css_class("spin");
-    spinner_image.set_icon_size(gtk4::IconSize::Large);
+    spinner_image.set_pixel_size(56);
+    spinner_image.set_vexpand(true);
+    spinner_image.set_valign(gtk4::Align::End);
 
     let loading_spinner = GtkBox::builder()
+        .hexpand(true)
+        .vexpand(true)
+        .halign(gtk4::Align::End)
+        .valign(gtk4::Align::End)
+        .margin_end(80)
+        .margin_bottom(80)
         .build();
 
     loading_spinner.append(&spinner_image);
@@ -442,9 +484,11 @@ fn build_ui(app: &Application) {
     workingbox.set_valign(gtk4::Align::End);
     workingbox.set_widget_name("workin");
     workingbox.append(&username_entry);
-    boxxy.append(&workingbox);
 
-    let pass_box = GtkBox::new(Orientation::Horizontal, 10);
+    boxxy.append(&workingbox);
+    boxxy.append(&loading_spinner);
+
+    let pass_box = GtkBox::new(Orientation::Vertical, 10);
     pass_box.set_height_request(5);
     pass_box.set_widget_name("hover-mee");
     pass_box.set_hexpand(true);
@@ -455,14 +499,12 @@ fn build_ui(app: &Application) {
 
     let pass_box_weak_key = pass_box.downgrade();
     let passwork_entry_outer_key = password_entry.clone();
-    let loading_spinner_outer_key = loading_spinner.clone();
     
     let key_controller = EventControllerKey::new();
     key_controller.connect_key_pressed(move |_, keyval, _, state| {
         let pass_box_opt = pass_box_weak_key.upgrade();
         let pass_box_weak_inner = pass_box_opt.clone();
         let password_entry_clone = passwork_entry_outer_key.clone();
-        let loading_spinner_clone = loading_spinner_outer_key.clone();
 
         let typed_char = if state.is_empty() || state == gtk4::gdk::ModifierType::SHIFT_MASK {
             keyval.to_unicode().filter(|c| !c.is_control())
@@ -480,7 +522,6 @@ fn build_ui(app: &Application) {
                 } else {
                     if password_entry_clone.parent().is_none() {
                         pass_box.append(&password_entry_clone);
-                        pass_box.append(&loading_spinner_clone);
                     }
                     password_entry_clone.grab_focus();
 
@@ -506,12 +547,10 @@ fn build_ui(app: &Application) {
     let motion_controller = EventControllerMotion::new();
     workingbox.add_controller(motion_controller.clone());
     let passwork_entry_outer = password_entry.clone();
-    let loading_spinner_outer = loading_spinner.clone();
 
     motion_controller.connect_enter(move |_, _, _| {
         let pass_box_weak_inner = pass_box_weak.clone();
         let password_entry_clone = passwork_entry_outer.clone();
-        let loading_spinner_clone = loading_spinner_outer.clone();
 
         glib::timeout_add_local(std::time::Duration::from_millis(10), move || {
             if let Some(pass_box) = pass_box_weak_inner.upgrade() {
@@ -522,7 +561,6 @@ fn build_ui(app: &Application) {
                     glib::ControlFlow::Continue
                 } else {
                     pass_box.append(&password_entry_clone);
-                    pass_box.append(&loading_spinner_clone);
                     password_entry_clone.grab_focus();
                     glib::ControlFlow::Break
                 }
@@ -549,7 +587,6 @@ fn build_ui(app: &Application) {
         let username_entry = username_entry_rc.clone();
         let password_entry = password_entry_rc.clone();
         let status = status.clone();
-        let window = window_rc.clone();
 
         let username = if let Some(user) = read_username_from_file() {
             user
@@ -569,8 +606,6 @@ fn build_ui(app: &Application) {
         let mut next_request = Request::CreateSession { username: username.clone() };
         let mut starting = false;
         let attempty = attempty.clone();
-        let uid = uid_for_user(&username).unwrap_or(0);
-        let ready_path = format!("/run/user/{}/cos-ready", uid);
         
         loop {
             if let Err(e) = next_request.write_to(&mut stream) {
@@ -588,32 +623,21 @@ fn build_ui(app: &Application) {
                 }
                 Ok(Response::Success) => {
                     if starting {
-                        loading_spinner.set_visible(true);
-                        let ready_path = ready_path.clone();
-                        let window = window.clone();
-                        let wait_start = Instant::now();
-
-                        glib::timeout_add_local(std::time::Duration::from_millis(150), move || {
-                            if std::path::Path::new(&ready_path).exists() {
-                                fade_out_and_quit(&window);
-                                return glib::ControlFlow::Break;
-                            }
-
-                            // if wait_start.elapsed() > std::time::Duration::from_secs(30) {
-                            //     eprintln!(
-                            //         "Timed out waiting for desktop session hook at {ready_path}"
-                            //     );
-                            //     fade_out_and_quit(&window);
-                            //     return glib::ControlFlow::Break;
-                            // }
-
-                            glib::ControlFlow::Continue
+                        workingbox.add_css_class("byepass");
+                        container.set_visible(false);
+                        time.add_css_class("byetime");
+                        let loading_spinner = loading_spinner.clone();
+                        let windowww = window_rc.clone();
+                        glib::spawn_future_local(async move {
+                            glib::timeout_future(std::time::Duration::from_millis(500)).await;
+                            password_entry.set_visibility(false);
+                            glib::timeout_future(std::time::Duration::from_millis(500)).await;
+                            loading_spinner.set_visible(true);
+                            glib::timeout_future(std::time::Duration::from_millis(2000)).await;
+                            fade_out_and_quit(&windowww);
                         });
-
                         break;
                     }
-
-                    let _ = std::fs::remove_file(&ready_path);
 
                     starting = true;
 
@@ -630,7 +654,7 @@ fn build_ui(app: &Application) {
                     attempty.set(new);
 
                     password_entry.add_css_class("shake-error");
-                    status.set_text(&format!("Da Password is Wrong, attemps left: {}", new));
+                    password_entry.set_placeholder_text(Some(&format!("Wrong Password: {}", new)));
                     password_entry.set_text("");
                     glib::timeout_add_local(std::time::Duration::from_millis(400), {
                         let entry_weak = password_entry.downgrade();
