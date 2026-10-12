@@ -205,7 +205,7 @@ fn build_ui(app: &Application) {
             font-size: 156px;
             letter-spacing: -2px;
             font-weight: 600;
-            color: rgba(255, 255, 255, 0.19);
+            color: rgba(93, 93, 93, 0.19);
         }
 
         #user {
@@ -226,9 +226,6 @@ fn build_ui(app: &Application) {
         .password {
             all: unset;
             padding: 10px;
-            background-color: rgba(255, 255, 255, 0.32);
-            border-radius: 15px;
-            border: 1px solid rgba(255, 255, 255, 0.18);
             color: white;
             caret-color: white;
         }
@@ -250,6 +247,7 @@ fn build_ui(app: &Application) {
             border-radius: 50px;
             padding: 12px;
             border: 1px solid rgba(255, 255, 255, 0);
+            color: rgba(93, 93, 93, 0.19);
         }
         .day-label {
             all: unset;
@@ -263,11 +261,12 @@ fn build_ui(app: &Application) {
             padding-left: 10px;
             margin-right: 15px;
             margin-left: 15px;
+            color: rgba(44, 44, 44, 0.18);
         }
         .date-button {
             all: unset;
             background-color: transparent;
-            color: white;
+            color: rgba(44, 44, 44, 0.18);
             border: none;
             font-weight: 500;
             border-radius: 12px;
@@ -278,9 +277,8 @@ fn build_ui(app: &Application) {
             margin-left: 20px;
         }
         .date-button.today {
-            background-color: rgba(255, 255, 255, 0.2);
-            color: black;
-            font-weight: bold;
+            color: rgba(24, 24, 24, 0.36);
+            font-weight: 900;
         }
 
         label {
@@ -320,40 +318,11 @@ fn build_ui(app: &Application) {
             to   { -gtk-icon-transform: rotate(360deg); }
         }
 
-        .byepass {
-            animation: upAndDown 0.5s forwards ease-in-out;
-        }
-
-        @keyframes upAndDown {
-            0% {
-                transform: translate(0px, 0px);
-                opacity: 1;
-            }
-            20% {
-                transform: translate(0px, -10px);
-                opacity: 1;
-            }
-            100% {
-                transform: translate(0px, 100px);
-                opacity: 0;
-            }
-        }
-
-        .byetime {
-            animation: timego 1s ease-in-out forwards;
-        }
-
-        @keyframes timego {
-            from {
-                font-size: 156px;
-                font-weight: 600;
-                transform: translateY(0)
-            }
-            to {
-                font-size: 50px;
-                font-weight: 300;
-                transform: translateY(20px)
-            }
+        .passboxy {
+            padding: 0px 5px 0px 5px;
+            background-color: rgba(255, 255, 255, 0.32);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
         }
         ",  
     );
@@ -397,17 +366,14 @@ fn build_ui(app: &Application) {
 
     let spinner_image = gtk4::Image::from_file("/var/lib/cynager/icons/spinner.svg");
     spinner_image.add_css_class("spin");
-    spinner_image.set_pixel_size(56);
+    spinner_image.set_pixel_size(26);
     spinner_image.set_vexpand(true);
     spinner_image.set_valign(gtk4::Align::End);
 
     let loading_spinner = GtkBox::builder()
         .hexpand(true)
         .vexpand(true)
-        .halign(gtk4::Align::End)
-        .valign(gtk4::Align::End)
-        .margin_end(80)
-        .margin_bottom(80)
+        .valign(gtk4::Align::Center)
         .build();
 
     loading_spinner.append(&spinner_image);
@@ -486,15 +452,15 @@ fn build_ui(app: &Application) {
     workingbox.append(&username_entry);
 
     boxxy.append(&workingbox);
-    boxxy.append(&loading_spinner);
 
-    let pass_box = GtkBox::new(Orientation::Vertical, 10);
+    let pass_box = GtkBox::new(Orientation::Horizontal, 5);
     pass_box.set_height_request(5);
     pass_box.set_widget_name("hover-mee");
     pass_box.set_hexpand(true);
     pass_box.set_vexpand(true);
     pass_box.set_halign(gtk4::Align::Center);
     workingbox.append(&pass_box);
+    pass_box.append(&loading_spinner);
     workingbox.append(&status);
 
     let pass_box_weak_key = pass_box.downgrade();
@@ -522,6 +488,7 @@ fn build_ui(app: &Application) {
                 } else {
                     if password_entry_clone.parent().is_none() {
                         pass_box.append(&password_entry_clone);
+                        pass_box.set_css_classes(&["passboxy"]);
                     }
                     password_entry_clone.grab_focus();
 
@@ -543,7 +510,6 @@ fn build_ui(app: &Application) {
     window.add_controller(key_controller);
     
     let pass_box_weak = pass_box.downgrade();
-    // Add motion controller to workingbox
     let motion_controller = EventControllerMotion::new();
     workingbox.add_controller(motion_controller.clone());
     let passwork_entry_outer = password_entry.clone();
@@ -561,6 +527,7 @@ fn build_ui(app: &Application) {
                     glib::ControlFlow::Continue
                 } else {
                     pass_box.append(&password_entry_clone);
+                    pass_box.set_css_classes(&["passboxy"]);
                     password_entry_clone.grab_focus();
                     glib::ControlFlow::Break
                 }
@@ -623,9 +590,6 @@ fn build_ui(app: &Application) {
                 }
                 Ok(Response::Success) => {
                     if starting {
-                        workingbox.add_css_class("byepass");
-                        container.set_visible(false);
-                        time.add_css_class("byetime");
                         let loading_spinner = loading_spinner.clone();
                         let windowww = window_rc.clone();
                         glib::spawn_future_local(async move {
