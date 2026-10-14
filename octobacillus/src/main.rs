@@ -132,7 +132,7 @@ fn get_startup_sound_path(config_path: &str) -> Option<String> {
             if parts.len() >= 2 {
                 let filename = parts[1].trim();
                 
-                let mut path = PathBuf::from("/var/lib/cynager/niri/sound/startup/");
+                let mut path = PathBuf::from("/var/lib/cynager/sound/startup/");
                 path.push(filename);
                 
                 return Some(path.to_string_lossy().into_owned());
